@@ -37,3 +37,6 @@ dist-ssr
 
 # Local workspace
 .workspace/
+
+# Netlify
+.netlify/
