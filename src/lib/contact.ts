@@ -9,10 +9,6 @@ const contactSchema = z.object({
   message: z.string().min(10, "Message is too short").max(2000),
 });
 
-type CreatedLead = {
-  id: string;
-};
-
 export const submitContact = createServerFn({ method: "POST" })
   .validator(contactSchema)
   .handler(async ({ data }) => {
@@ -20,9 +16,9 @@ export const submitContact = createServerFn({ method: "POST" })
     const telegramChatId = process.env["TELEGRAM_CHAT_ID"];
 
     const supabaseUrl = process.env["SUPABASE_URL"];
-    const supabaseSecretKey = process.env["SUPABASE_SECRET_KEY"];
+    const supabaseKey = process.env["SUPABASE_ANON_KEY"];
 
-    if (!supabaseUrl || !supabaseSecretKey) {
+    if (!supabaseUrl || !supabaseKey) {
       console.error("Supabase environment variables are missing");
 
       return {
@@ -50,9 +46,9 @@ export const submitContact = createServerFn({ method: "POST" })
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: supabaseSecretKey,
-          Authorization: `Bearer ${supabaseSecretKey}`,
-          Prefer: "return=representation",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          Prefer: "return=minimal",
         },
         body: JSON.stringify({
           name: data.name,
@@ -75,84 +71,23 @@ export const submitContact = createServerFn({ method: "POST" })
       };
     }
 
-    const createdLeads =
-      (await supabaseResponse.json()) as CreatedLead[];
-
-    const lead = createdLeads[0];
-
-    if (!lead?.id) {
-      console.error(
-        "Supabase did not return the new lead ID",
-      );
-
-      return {
-        success: false,
-        error: "Lead was saved, but its ID was not returned",
-      };
-    }
-
-    // ==========================================
-    // CREATE TELEGRAM MESSAGE
-    // ==========================================
-
-    const receivedAt = new Date().toLocaleString("en-US", {
-      timeZone: "Asia/Tashkent",
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-
-    const text = [
-      "🚀 <b>NEW RIVORA LEAD</b>",
-      "",
-      `👤 <b>Name:</b> ${escapeTelegramHtml(data.name)}`,
-      `🏢 <b>Company:</b> ${escapeTelegramHtml(data.company)}`,
-      `📧 <b>Email:</b> ${escapeTelegramHtml(data.email)}`,
-      `📱 <b>Phone:</b> ${escapeTelegramHtml(
-        data.phone || "Not provided",
-      )}`,
-      "",
-      "💬 <b>Request:</b>",
-      escapeTelegramHtml(data.message),
-      "",
-      `🕐 <b>Received:</b> ${receivedAt}`,
-      "",
-      "📌 <b>Status:</b> New",
-      "",
-      "🌐 <i>New request from RIVORA website</i>",
-    ].join("\n");
-
-    // ==========================================
-    // TELEGRAM BUTTONS
-    // ==========================================
-
-    const replyMarkup = {
-      inline_keyboard: [
-        [
-          {
-            text: "📞 Contacted",
-            callback_data: `lead:${lead.id}:contacted`,
-          },
-          {
-            text: "🔄 In Progress",
-            callback_data: `lead:${lead.id}:in_progress`,
-          },
-        ],
-        [
-          {
-            text: "✅ Completed",
-            callback_data: `lead:${lead.id}:completed`,
-          },
-        ],
-      ],
-    };
-
     // ==========================================
     // SEND LEAD TO TELEGRAM
     // ==========================================
+
+    const text = [
+      "🚀 NEW RIVORA LEAD",
+      "",
+      `👤 Name: ${data.name}`,
+      `🏢 Company: ${data.company}`,
+      `📧 Email: ${data.email}`,
+      `📱 Phone: ${data.phone || "Not provided"}`,
+      "",
+      "💬 Request:",
+      data.message,
+      "",
+      "🌐 New request from website",
+    ].join("\n");
 
     const telegramResponse = await fetch(
       `https://api.telegram.org/bot${telegramToken}/sendMessage`,
@@ -164,9 +99,6 @@ export const submitContact = createServerFn({ method: "POST" })
         body: JSON.stringify({
           chat_id: telegramChatId,
           text,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-          reply_markup: replyMarkup,
         }),
       },
     );
@@ -182,19 +114,9 @@ export const submitContact = createServerFn({ method: "POST" })
       };
     }
 
-    console.log("NEW RIVORA LEAD:", {
-      id: lead.id,
-      ...data,
-    });
+    console.log("NEW RIVORA LEAD:", data);
 
     return {
       success: true,
     };
   });
-
-function escapeTelegramHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
